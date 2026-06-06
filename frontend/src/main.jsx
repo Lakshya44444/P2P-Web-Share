@@ -3,6 +3,11 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import './index.css'
 
+// Polyfill for SimplePeer which expects 'global' object
+if (typeof window !== 'undefined' && !window.global) {
+  window.global = window;
+}
+
 const rootElement = document.getElementById('root')
 if (rootElement) {
   ReactDOM.createRoot(rootElement).render(
