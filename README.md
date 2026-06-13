@@ -1,254 +1,112 @@
-# P2P Web Share - Direct Browser-to-Browser File Transfer
+# P2P Web Share
 
-A lightweight, decentralized P2P file sharing web application using WebRTC, React.js, and Node.js. Transfer files directly between browsers without relying on central servers.
+Direct, browser-to-browser file transfer. Drop a file, share a link, and the
+recipient's browser connects **directly** to yours over WebRTC to stream the
+file. A small Socket.io signaling server only helps the two browsers find each
+other during the handshake — it never sees, stores, or relays any file data.
 
-## 🎯 Key Features
+## How it works
 
-### Core MVP Features
-- **Share Room Creation**: Drag-and-drop zone to upload files and generate unique Room IDs
-- **Signaling Handshake**: Node.js + Socket.io backend for WebRTC coordination
-- **Direct P2P Transfer**: Files transferred directly over WebRTC data channels
-- **SHA-256 Verification**: Cryptographic hashing ensures zero data corruption
-- **Real-time Progress**: Live transfer percentage, speed (MB/s), and connection status
-- **Graceful Disconnect Handling**: Smooth handling of connection drops
-- **Auto-Download**: Automatic file download on successful transfer completion
-- **File Size Support**: Up to 50MB for standard browser memory
-
-### Technical Highlights
-- No central server processes, reads, or stores file data
-- Secure WebRTC peer-to-peer connections
-- Web Crypto API for hash verification
-- Socket.io for signaling
-- Responsive Tailwind CSS UI
-
-## 🛠️ Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React.js + Vite + Tailwind CSS |
-| P2P Communication | WebRTC (SimplePeer) |
-| Signaling Backend | Node.js + Express.js + Socket.io |
-| Hashing | Web Crypto API (SHA-256) |
-
-## 📋 Prerequisites
-
-- Node.js 14.0+
-- npm or yarn
-- Modern web browser with WebRTC support
-
-## 🚀 Installation & Setup
-
-### 1. Clone Repository
-```bash
-git clone <repository-url>
-cd project_mars_webd
+```
+  Sender browser  ──┐                              ┌──  Receiver browser
+                    │   1. handshake (SDP + ICE)   │
+                    └────────► Signaling ◄─────────┘
+                               server (Socket.io)
+                    │                              │
+                    └──── 2. file data (WebRTC ────┘
+                          data channel, direct P2P)
 ```
 
-### 2. Backend Setup
+1. The sender creates a room and shares the link (`/?room=ABC123`).
+2. When the receiver opens the link, both browsers exchange WebRTC offer/answer
+   and ICE candidates through the signaling server.
+3. Once connected, the file streams **directly** between the two browsers over
+   an encrypted (DTLS) data channel. The server is no longer involved.
 
+## Features
+
+- **Drag-and-drop sharing** with a unique room link (files up to 50 MB).
+- **Socket.io signaling** for the WebRTC handshake only — zero file data.
+- **Direct P2P transfer** over a WebRTC data channel, streamed in 16 KB chunks
+  with **backpressure** so the channel buffer never overflows.
+- **SHA-256 integrity check**: the sender hashes the file up front; the receiver
+  re-hashes the reassembled file and only saves it if the hashes match.
+- **Live progress**: transfer percentage and speed (MB/s) on both ends.
+- **Graceful disconnects**: closing a tab notifies the other side instead of
+  hanging or crashing.
+- **Auto-download**: the verified file is saved automatically on completion.
+
+## Tech stack
+
+| Layer            | Technology                          |
+| ---------------- | ----------------------------------- |
+| Frontend         | React + Vite + Tailwind CSS         |
+| P2P transport    | WebRTC via [simple-peer]            |
+| Signaling server | Node.js + Express + Socket.io       |
+
+[simple-peer]: https://github.com/feross/simple-peer
+
+## Project structure
+
+```
+backend/          Express + Socket.io signaling server
+  server.js
+frontend/         React app (Vite)
+  src/
+    App.jsx               Landing page + room creation/join
+    components/
+      Sender.jsx          Sends the file (WebRTC initiator)
+      Receiver.jsx        Receives, verifies, downloads
+    utils/crypto.js       SHA-256 + byte formatting
+```
+
+## Run locally
+
+You need two terminals.
+
+**1. Backend**
 ```bash
 cd backend
 npm install
+npm start            # http://localhost:4000
 ```
 
-Create `.env` file in backend directory:
-```env
-PORT=3001
-FRONTEND_URL=http://localhost:5173
-NODE_ENV=development
-```
-
-Start the backend server:
-```bash
-npm run dev
-```
-
-Backend will run on `http://localhost:3001`
-
-### 3. Frontend Setup
-
+**2. Frontend**
 ```bash
 cd frontend
 npm install
+npm run dev          # http://localhost:5173
 ```
 
-Create `.env` file in frontend directory:
-```env
-VITE_BACKEND_URL=http://localhost:3001
-```
+Open `http://localhost:5173`, click **Share a File**, copy the link, and open it
+in a second browser tab (or another device). Pick a file and send it.
 
-Start the development server:
-```bash
-npm run dev
-```
+## Configuration
 
-Frontend will run on `http://localhost:5173`
+Environment variables (see `.env.example` in each folder):
 
-## 🎮 Usage
+| Variable           | Where    | Default                 |
+| ------------------ | -------- | ----------------------- |
+| `PORT`             | backend  | `4000`                  |
+| `FRONTEND_URL`     | backend  | `http://localhost:5173` |
+| `VITE_BACKEND_URL` | frontend | `http://localhost:4000` |
 
-### Sending a File
+## Deployment
 
-1. Open `http://localhost:5173` in your browser
-2. Click **"📤 Share a File"**
-3. Wait for the receiver to connect
-4. Drag and drop a file (max 50MB) or click to select
-5. Click **"🚀 Start Transfer"**
-6. Share the displayed room link with the recipient
+- **Frontend** → Vercel / Netlify. Build command `npm run build`, output `dist`.
+  Set `VITE_BACKEND_URL` to your deployed backend URL.
+- **Backend** → Render / Railway. Start command `npm start`. Set `FRONTEND_URL`
+  to your deployed frontend URL.
 
-### Receiving a File
+## A note on networks
 
-1. Open the shared room link or go to `http://localhost:5173?room=ROOMID`
-2. The receiver will automatically join the room
-3. Wait for the transfer to complete
-4. File downloads automatically after verification
+WebRTC needs a route between the two peers. On open networks and across the
+internet this works directly. Some restrictive networks (e.g. locked-down
+campus or corporate Wi-Fi) block peer-to-peer connections; in that case use a
+mobile hotspot, or test both tabs on the same machine. Production deployments
+typically add a **TURN server** to relay through such firewalls — that's a
+deliberate next step, not part of this MVP.
 
-## 📊 Architecture
+## License
 
-### Backend (Signaling Server)
-
-```
-Node.js + Express.js + Socket.io
-├── /health - Health check endpoint
-├── /api/create-room - Create new room (POST)
-└── Socket.io Events:
-    ├── join-room - Join peer to room
-    ├── offer - Send WebRTC offer
-    ├── answer - Send WebRTC answer
-    ├── ice-candidate - Send ICE candidates
-    └── disconnect - Handle disconnection
-```
-
-### Frontend (React)
-
-```
-src/
-├── App.jsx - Main app component with room selection
-├── components/
-│   ├── Sender.jsx - File sender component
-│   └── Receiver.jsx - File receiver component
-└── utils/
-    └── crypto.js - SHA-256 hashing utilities
-```
-
-### Data Flow
-
-1. **Room Creation**: Sender creates room via HTTP POST
-2. **Peer Joining**: Both peers join via Socket.io
-3. **WebRTC Handshake**: Exchange offer/answer via signaling server
-4. **File Transfer**: Direct P2P data channel communication
-5. **Hash Verification**: SHA-256 verification on completion
-6. **Auto-Download**: File automatically downloaded to receiver
-
-## 🔒 Security Considerations
-
-- No file data passes through signaling server
-- SHA-256 verification prevents data corruption
-- WebRTC encryption (DTLS) for data in transit
-- No authentication required for MVP (add auth for production)
-
-## 🧪 Testing
-
-### Local Testing
-1. Open two browser windows/tabs to `http://localhost:5173`
-2. One initiates share, one receives
-3. Test file transfer with various file sizes
-
-### Cross-Network Testing
-1. Deploy backend to a public server
-2. Update `VITE_BACKEND_URL` in frontend `.env`
-3. Deploy frontend or access via tunnel
-4. Share room link across network
-
-## 📦 Building for Production
-
-### Frontend Build
-```bash
-cd frontend
-npm run build
-```
-Output: `frontend/dist/` ready for Vercel/Netlify
-
-### Backend Deployment
-Deploy `backend/` to Render, Railway, or similar service
-
-### Environment Variables (Production)
-```env
-# Backend
-PORT=3001
-FRONTEND_URL=https://yourdomain.com
-NODE_ENV=production
-
-# Frontend
-VITE_BACKEND_URL=https://api.yourdomain.com
-```
-
-## 🚢 Deployment
-
-### Frontend (Vercel/Netlify)
-```bash
-vercel --prod
-# or
-netlify deploy --prod
-```
-
-### Backend (Render/Railway)
-1. Push code to GitHub
-2. Connect repository to Render/Railway
-3. Set environment variables
-4. Deploy on platform
-
-## 🎨 UI Features
-
-- **Modern Gradient Design**: Tailwind CSS with blue/green gradients
-- **Real-time Feedback**: Progress bars, speed indicators, status messages
-- **Drag-and-Drop**: Intuitive file selection
-- **Responsive Design**: Works on desktop and tablet
-- **Error Handling**: Clear error messages and recovery options
-
-## 📈 Performance Metrics
-
-- **Chunk Size**: 16KB per transmission
-- **Transfer Speed**: Real-time MB/s calculation
-- **Memory Efficient**: Streamed chunk processing
-- **Latency**: Minimal (direct P2P after handshake)
-
-## 🐛 Troubleshooting
-
-### "Connecting..." Status Stuck
-- Verify backend is running
-- Check CORS configuration
-- Ensure VITE_BACKEND_URL matches backend URL
-
-### WebRTC Connection Fails
-- Check browser WebRTC support
-- Verify firewall/NAT settings
-- Try different networks/regions
-
-### File Hash Mismatch
-- Check network stability
-- Retry transfer
-- Verify file not corrupted before sending
-
-### CORS Errors
-- Update backend CORS origins
-- Ensure frontend URL matches backend allowlist
-
-## 📚 Advanced Features (Optional)
-
-### Potential Extensions
-- Multi-peer support (mesh swarming)
-- Large file support (>500MB) via Streams API + OPFS
-- Zero-knowledge encryption (AES-GCM)
-- Connection recovery (auto-resume on disconnect)
-
-## 📝 License
-
-MIT License - Feel free to use, modify, and distribute
-
-## 👤 Author
-
-[Your Name/Team]
-
-## 📞 Support
-
-For issues and questions, please open a GitHub issue or contact the development team.
+MIT

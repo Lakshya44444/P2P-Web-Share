@@ -1,113 +1,102 @@
+// P2P Web Share — signaling server
+// Coordinates the WebRTC handshake between two browsers. It relays SDP
+// offers/answers and ICE candidates, but never sees any file data: the
+// file itself flows directly peer-to-peer over the WebRTC data channel.
+
 const express = require('express');
 const http = require('http');
-const socketIo = require('socket.io');
+const { Server } = require('socket.io');
 const cors = require('cors');
 require('dotenv').config();
 
-const app = express();
-const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: {
-    origin: [
-      'http://localhost:3000',
-      'http://localhost:5173',
-      process.env.FRONTEND_URL || 'http://localhost:3000'
-    ],
-    methods: ['GET', 'POST']
-  }
-});
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+const PORT = process.env.PORT || 4000;
 
-app.use(cors());
+// Allow the configured frontend plus common local dev origins.
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  FRONTEND_URL,
+];
+
+const app = express();
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 
-const rooms = new Map();
-const userSockets = new Map();
-
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: allowedOrigins, methods: ['GET', 'POST'] },
 });
 
+// roomId -> { createdAt, peers: [socketId, ...] }
+const rooms = new Map();
+
+function generateRoomId() {
+  return Math.random().toString(36).substring(2, 8).toUpperCase();
+}
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', rooms: rooms.size, timestamp: new Date().toISOString() });
+});
+
+// Create a room. The sender calls this, then shares the link.
 app.post('/api/create-room', (req, res) => {
-  const roomId = generateRoomId();
-  rooms.set(roomId, {
-    createdAt: Date.now(),
-    peers: []
-  });
-  res.json({ roomId, shareUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}?room=${roomId}` });
+  let roomId = generateRoomId();
+  while (rooms.has(roomId)) roomId = generateRoomId();
+  rooms.set(roomId, { createdAt: Date.now(), peers: [] });
+  res.json({ roomId, shareUrl: `${FRONTEND_URL}/?room=${roomId}` });
 });
 
 io.on('connection', (socket) => {
-  console.log('New client connected:', socket.id);
-
-  socket.on('join-room', (data) => {
-    const { roomId, peerId, isInitiator } = data;
-
+  socket.on('join-room', ({ roomId }) => {
+    // Rooms are created lazily so a receiver can open a link even if the
+    // server restarted after the sender created the room.
     if (!rooms.has(roomId)) {
-      socket.emit('error', { message: 'Room not found' });
+      rooms.set(roomId, { createdAt: Date.now(), peers: [] });
+    }
+    const room = rooms.get(roomId);
+
+    // Idempotent: ignore a repeat join from a socket already in the room
+    // (e.g. React effects firing twice in dev).
+    if (room.peers.includes(socket.id)) return;
+
+    if (room.peers.length >= 2) {
+      socket.emit('room-full');
       return;
     }
 
-    const room = rooms.get(roomId);
-    userSockets.set(peerId, socket.id);
-
     socket.join(roomId);
-    socket.roomId = roomId;
-    socket.peerId = peerId;
-    socket.isInitiator = isInitiator;
+    socket.data.roomId = roomId;
+    room.peers.push(socket.id);
 
-    if (room.peers.length === 0) {
-      room.peers.push({ peerId, socketId: socket.id, isInitiator });
-      socket.emit('room-status', { status: 'waiting-for-peer', peers: room.peers });
-    } else if (room.peers.length === 1) {
-      room.peers.push({ peerId, socketId: socket.id, isInitiator });
-      io.to(roomId).emit('peer-joined', { peerId, peers: room.peers });
+    if (room.peers.length === 2) {
+      // Both peers present. Tell the first-joiner (the sender/initiator)
+      // to start the WebRTC offer.
+      io.to(room.peers[0]).emit('peer-ready');
+      socket.emit('joined', { waiting: false });
     } else {
-      socket.emit('error', { message: 'Room is full' });
-      socket.leave(roomId);
+      socket.emit('joined', { waiting: true });
     }
   });
 
-  socket.on('offer', (data) => {
-    const { roomId, to, offer } = data;
-    io.to(roomId).emit('offer', { from: socket.peerId, offer });
-  });
-
-  socket.on('answer', (data) => {
-    const { roomId, to, answer } = data;
-    io.to(roomId).emit('answer', { from: socket.peerId, answer });
-  });
-
-  socket.on('ice-candidate', (data) => {
-    const { roomId, candidate } = data;
-    socket.to(roomId).emit('ice-candidate', { from: socket.peerId, candidate });
+  // Relay every SimplePeer signal (offer, answer, ICE candidates) to the
+  // other peer in the room. The server doesn't inspect the payload.
+  socket.on('signal', ({ roomId, data }) => {
+    socket.to(roomId).emit('signal', { data });
   });
 
   socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
-    if (socket.roomId) {
-      const room = rooms.get(socket.roomId);
-      if (room) {
-        room.peers = room.peers.filter(p => p.socketId !== socket.id);
-        socket.to(socket.roomId).emit('peer-disconnected', { peerId: socket.peerId });
+    const roomId = socket.data.roomId;
+    if (!roomId || !rooms.has(roomId)) return;
 
-        if (room.peers.length === 0) {
-          rooms.delete(socket.roomId);
-        }
-      }
-    }
-    userSockets.delete(socket.peerId);
-  });
+    const room = rooms.get(roomId);
+    room.peers = room.peers.filter((id) => id !== socket.id);
+    socket.to(roomId).emit('peer-disconnected');
 
-  socket.on('error', (error) => {
-    console.error('Socket error:', error);
+    if (room.peers.length === 0) rooms.delete(roomId);
   });
 });
 
-function generateRoomId() {
-  return Math.random().toString(36).substring(2, 11).toUpperCase();
-}
-
-const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
-  console.log(`Signaling server running on port ${PORT}`);
+  console.log(`Signaling server listening on port ${PORT}`);
 });

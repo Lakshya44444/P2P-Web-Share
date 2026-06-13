@@ -1,322 +1,253 @@
 import { useState, useRef, useEffect } from 'react';
 import SimplePeer from 'simple-peer';
-import { calculateSHA256 } from '../utils/crypto';
+import { calculateSHA256, formatBytes } from '../utils/crypto';
 
-function Sender({ socket, roomId, peerId }) {
+const CHUNK_SIZE = 16 * 1024; // 16 KB — safe max for WebRTC data channels
+const BUFFER_HIGH = 1 * 1024 * 1024; // pause sending above 1 MB buffered
+const BUFFER_LOW = 256 * 1024; // resume once buffer drains below 256 KB
+const TYPE_CONTROL = 0; // message prefix: JSON control message
+const TYPE_CHUNK = 1; // message prefix: file chunk
+
+// Frame a control message as [TYPE_CONTROL, ...utf8(json)].
+function control(obj) {
+  const json = new TextEncoder().encode(JSON.stringify(obj));
+  const out = new Uint8Array(json.length + 1);
+  out[0] = TYPE_CONTROL;
+  out.set(json, 1);
+  return out;
+}
+
+function Sender({ socket, roomId }) {
   const [file, setFile] = useState(null);
-  const [transferStatus, setTransferStatus] = useState('idle');
+  const [fileHash, setFileHash] = useState(null);
+  const [status, setStatus] = useState('waiting'); // waiting | ready | hashing | transferring | done
   const [progress, setProgress] = useState(0);
   const [speed, setSpeed] = useState(0);
   const [peerConnected, setPeerConnected] = useState(false);
   const [error, setError] = useState(null);
-  const peerRef = useRef(null);
-  const dataChannelRef = useRef(null);
-  const startTimeRef = useRef(null);
-  const sentBytesRef = useRef(0);
-  const fileHashRef = useRef(null);
-  const chunkHashes = useRef({});
+  const [copied, setCopied] = useState(false);
 
-  const CHUNK_SIZE = 16 * 1024; // 16KB chunks
+  const peerRef = useRef(null);
 
   useEffect(() => {
     if (!socket) return;
 
-    socket.on('peer-joined', () => {
-      console.log('Peer joined, initiating connection');
-      initiatePeerConnection();
-    });
-
-    socket.on('answer', (data) => {
-      console.log('Received answer from peer');
-      if (peerRef.current) {
-        peerRef.current.signal(data.answer);
-      }
-    });
-
-    socket.on('ice-candidate', (data) => {
-      console.log('Received ICE candidate');
-      if (peerRef.current) {
-        peerRef.current.signal(data.candidate);
-      }
-    });
-
-    socket.on('peer-disconnected', () => {
+    // Both peers are in the room — we are the initiator, create the offer.
+    const onPeerReady = () => createPeer();
+    const onSignal = ({ data }) => peerRef.current && peerRef.current.signal(data);
+    const onPeerDisconnected = () => {
       setPeerConnected(false);
-      setTransferStatus('peer disconnected');
-      setError('Peer disconnected');
-    });
+      setError('The receiver disconnected.');
+      if (status === 'transferring') setStatus('ready');
+    };
+
+    socket.on('peer-ready', onPeerReady);
+    socket.on('signal', onSignal);
+    socket.on('peer-disconnected', onPeerDisconnected);
 
     return () => {
-      socket.off('peer-joined');
-      socket.off('answer');
-      socket.off('ice-candidate');
-      socket.off('peer-disconnected');
+      socket.off('peer-ready', onPeerReady);
+      socket.off('signal', onSignal);
+      socket.off('peer-disconnected', onPeerDisconnected);
+      if (peerRef.current) peerRef.current.destroy();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket]);
 
-  function initiatePeerConnection() {
-    const peer = new SimplePeer({
-      initiator: true,
-      trickleICE: true,
-      streams: []
-    });
+  function createPeer() {
+    if (peerRef.current) return;
+    const peer = new SimplePeer({ initiator: true, trickle: true });
 
-    peer.on('signal', (data) => {
-      socket.emit('offer', {
-        roomId,
-        to: 'receiver',
-        offer: data
-      });
-    });
-
+    peer.on('signal', (data) => socket.emit('signal', { roomId, data }));
     peer.on('connect', () => {
-      console.log('Peer connection established');
       setPeerConnected(true);
       setError(null);
+      setStatus((s) => (s === 'waiting' ? 'ready' : s));
     });
-
-    peer.on('data', (data) => {
-      const message = JSON.parse(data.toString());
-      if (message.type === 'chunk-ack') {
-        console.log(`Chunk ${message.chunkIndex} acknowledged`);
-      }
-    });
-
-    peer.on('error', (err) => {
-      console.error('Peer error:', err);
-      setError(`Connection error: ${err.message}`);
-      setPeerConnected(false);
-    });
-
-    peer.on('close', () => {
-      console.log('Peer connection closed');
-      setPeerConnected(false);
-    });
+    peer.on('error', (err) => setError(`Connection error: ${err.message}`));
+    peer.on('close', () => setPeerConnected(false));
 
     peerRef.current = peer;
   }
 
-  async function handleFileSelect(e) {
-    const selectedFile = e.target.files[0];
-    if (selectedFile) {
-      if (selectedFile.size > 50 * 1024 * 1024) {
-        setError('File size must be less than 50MB');
-        return;
-      }
-      setFile(selectedFile);
-      setError(null);
-      fileHashRef.current = await calculateSHA256(selectedFile);
-      console.log('File hash:', fileHashRef.current);
+  async function onFileChosen(selected) {
+    if (!selected) return;
+    if (selected.size > 50 * 1024 * 1024) {
+      setError('File is larger than 50 MB. Please choose a smaller file.');
+      return;
     }
+    setError(null);
+    setFile(selected);
+    setStatus('hashing');
+    const hash = await calculateSHA256(selected);
+    setFileHash(hash);
+    setStatus(peerConnected ? 'ready' : 'waiting');
   }
 
-  function handleDragOver(e) {
-    e.preventDefault();
-    e.stopPropagation();
+  // Wait until the data channel buffer drains, so we never overflow it.
+  function waitForDrain(channel) {
+    return new Promise((resolve) => {
+      channel.bufferedAmountLowThreshold = BUFFER_LOW;
+      const onLow = () => {
+        channel.removeEventListener('bufferedamountlow', onLow);
+        resolve();
+      };
+      channel.addEventListener('bufferedamountlow', onLow);
+    });
+  }
+
+  async function startTransfer() {
+    const peer = peerRef.current;
+    if (!file || !peer || !peer.connected) {
+      setError('No file selected or peer not connected.');
+      return;
+    }
+
+    setStatus('transferring');
+    setProgress(0);
+    setSpeed(0);
+
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    // Every message is framed with a 1-byte type prefix so the receiver can
+    // tell control messages from file chunks. (simple-peer delivers all
+    // messages as binary, so we can't rely on string-vs-binary detection.)
+    peer.send(control({ type: 'header', name: file.name, size: file.size, totalChunks, hash: fileHash }));
+
+    const channel = peer._channel;
+    const startTime = Date.now();
+    let sent = 0;
+
+    for (let i = 0; i < totalChunks; i++) {
+      if (!peer.connected) {
+        setError('Connection lost during transfer.');
+        setStatus('ready');
+        return;
+      }
+
+      const start = i * CHUNK_SIZE;
+      const buffer = await file.slice(start, start + CHUNK_SIZE).arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+
+      const framed = new Uint8Array(bytes.length + 1);
+      framed[0] = TYPE_CHUNK;
+      framed.set(bytes, 1);
+      peer.send(framed);
+      sent += bytes.length;
+
+      // Backpressure: if the channel buffer is filling up, wait for it to drain.
+      if (channel && channel.bufferedAmount > BUFFER_HIGH) {
+        await waitForDrain(channel);
+      }
+
+      const elapsed = (Date.now() - startTime) / 1000;
+      setProgress(Math.round((sent / file.size) * 100));
+      setSpeed(elapsed > 0 ? (sent / (1024 * 1024) / elapsed).toFixed(2) : 0);
+    }
+
+    peer.send(control({ type: 'done' }));
+    setProgress(100);
+    setStatus('done');
+  }
+
+  function copyLink() {
+    navigator.clipboard.writeText(`${window.location.origin}/?room=${roomId}`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   function handleDrop(e) {
     e.preventDefault();
-    e.stopPropagation();
-    const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile) {
-      const event = { target: { files: [droppedFile] } };
-      handleFileSelect(event);
-    }
-  }
-
-  async function startTransfer() {
-    if (!file || !peerRef.current || !peerRef.current.connected) {
-      setError('File not selected or peer not connected');
-      return;
-    }
-
-    setTransferStatus('transferring');
-    setProgress(0);
-    setSpeed(0);
-    startTimeRef.current = Date.now();
-    sentBytesRef.current = 0;
-    chunkHashes.current = {};
-
-    const fileBuffer = await file.arrayBuffer();
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-
-    for (let i = 0; i < totalChunks; i++) {
-      const start = i * CHUNK_SIZE;
-      const end = Math.min(start + CHUNK_SIZE, file.size);
-      const chunk = fileBuffer.slice(start, end);
-      const chunkData = new Uint8Array(chunk);
-      const chunkHash = await calculateSHA256Chunk(chunkData);
-
-      chunkHashes.current[i] = chunkHash;
-
-      const message = JSON.stringify({
-        type: 'file-chunk',
-        chunkIndex: i,
-        totalChunks,
-        fileName: file.name,
-        fileSize: file.size,
-        fileHash: fileHashRef.current,
-        chunkHash,
-        chunkData: Array.from(chunkData)
-      });
-
-      peerRef.current.send(message);
-      sentBytesRef.current += chunkData.length;
-
-      const elapsedSeconds = (Date.now() - startTimeRef.current) / 1000;
-      const speedMBps = (sentBytesRef.current / (1024 * 1024)) / elapsedSeconds;
-      setSpeed(speedMBps.toFixed(2));
-      setProgress(Math.round((sentBytesRef.current / file.size) * 100));
-
-      // Small delay to avoid overwhelming the data channel
-      await new Promise(resolve => setTimeout(resolve, 10));
-    }
-
-    // Send completion signal
-    peerRef.current.send(JSON.stringify({
-      type: 'transfer-complete',
-      fileHash: fileHashRef.current,
-      fileName: file.name
-    }));
-
-    setTransferStatus('completed');
-  }
-
-  async function calculateSHA256Chunk(data) {
-    const buffer = data.buffer;
-    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-
-  function copyRoomLink() {
-    const link = `${window.location.origin}?room=${roomId}`;
-    navigator.clipboard.writeText(link);
-    alert('Room link copied to clipboard!');
+    onFileChosen(e.dataTransfer.files[0]);
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-900 p-4 flex items-center justify-center">
-      <div className="bg-white rounded-lg shadow-2xl p-8 max-w-2xl w-full">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">📤 Share a File</h1>
-          <p className="text-gray-600">Room ID: <span className="font-bold text-blue-600">{roomId}</span></p>
-        </div>
+      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-xl w-full">
+        <h1 className="text-2xl font-bold text-gray-800 mb-1">📤 Share a File</h1>
+        <p className="text-gray-500 mb-6">
+          Room <span className="font-mono font-semibold text-blue-600">{roomId}</span>
+        </p>
 
-        <div className="mb-6 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
-          <p className="text-sm text-gray-700 mb-3">Share this link with the recipient:</p>
+        {/* Share link */}
+        <div className="mb-5 p-4 bg-blue-50 rounded-xl border border-blue-100">
+          <p className="text-sm text-gray-600 mb-2">Send this link to the receiver:</p>
           <div className="flex gap-2">
             <input
-              type="text"
               readOnly
-              value={`${window.location.origin}?room=${roomId}`}
+              value={`${window.location.origin}/?room=${roomId}`}
               className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm"
             />
-            <button
-              onClick={copyRoomLink}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium"
-            >
-              Copy
+            <button onClick={copyLink} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
+              {copied ? 'Copied!' : 'Copy'}
             </button>
           </div>
+        </div>
+
+        {/* Connection status */}
+        <div className={`mb-5 p-3 rounded-lg text-sm font-medium ${peerConnected ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+          {peerConnected ? '✅ Receiver connected' : '⏳ Waiting for the receiver to open the link…'}
         </div>
 
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border-2 border-red-200 rounded-lg text-red-700">
-            {error}
-          </div>
+          <div className="mb-5 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
         )}
 
-        {!peerConnected && transferStatus === 'idle' && (
-          <div className="mb-6 p-4 bg-yellow-50 border-2 border-yellow-200 rounded-lg text-yellow-700">
-            ⏳ Waiting for receiver to connect...
-          </div>
-        )}
-
-        {peerConnected && (
-          <div className="mb-6 p-4 bg-green-50 border-2 border-green-200 rounded-lg text-green-700">
-            ✅ Peer connected and ready
-          </div>
-        )}
-
-        {transferStatus === 'idle' && (
-          <div
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
-            className="border-3 border-dashed border-blue-400 rounded-lg p-8 text-center cursor-pointer hover:bg-blue-50 transition"
-          >
-            <div className="text-5xl mb-3">📁</div>
-            <p className="text-gray-700 font-medium mb-2">Drag and drop a file here</p>
-            <p className="text-gray-500 text-sm mb-4">or click to select (max 50MB)</p>
-            <input
-              type="file"
-              onChange={handleFileSelect}
-              className="hidden"
-              id="file-input"
-            />
-            <label htmlFor="file-input" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium cursor-pointer inline-block">
-              Select File
-            </label>
-          </div>
-        )}
-
-        {file && transferStatus === 'idle' && (
-          <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-            <p className="text-gray-700 font-medium mb-2">Selected File:</p>
-            <div className="flex justify-between items-center mb-4">
-              <span className="text-gray-600">{file.name}</span>
-              <span className="text-gray-600">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
+        {/* File picker */}
+        {(status === 'waiting' || status === 'hashing' || status === 'ready') && (
+          <>
+            <div
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={handleDrop}
+              className="border-2 border-dashed border-blue-300 rounded-xl p-8 text-center hover:bg-blue-50 transition"
+            >
+              <div className="text-4xl mb-2">📁</div>
+              <p className="text-gray-700 font-medium">Drag &amp; drop a file here</p>
+              <p className="text-gray-400 text-sm mb-4">or pick one (max 50 MB)</p>
+              <input id="file-input" type="file" className="hidden" onChange={(e) => onFileChosen(e.target.files[0])} />
+              <label htmlFor="file-input" className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-medium cursor-pointer inline-block">
+                Choose File
+              </label>
             </div>
-            <button
-              onClick={startTransfer}
-              disabled={!peerConnected}
-              className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold py-3 px-4 rounded-lg transition"
-            >
-              {peerConnected ? '🚀 Start Transfer' : 'Waiting for peer...'}
-            </button>
-          </div>
+
+            {file && (
+              <div className="mt-5 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-gray-700 font-medium truncate pr-2">{file.name}</span>
+                  <span className="text-gray-500 shrink-0">{formatBytes(file.size)}</span>
+                </div>
+                {status === 'hashing' && <p className="text-xs text-gray-400">Computing SHA-256…</p>}
+                {fileHash && <p className="text-xs text-gray-400 font-mono truncate">SHA-256: {fileHash}</p>}
+                <button
+                  onClick={startTransfer}
+                  disabled={!peerConnected || status === 'hashing'}
+                  className="w-full mt-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white font-semibold py-2.5 rounded-lg transition"
+                >
+                  {peerConnected ? '🚀 Send File' : 'Waiting for receiver…'}
+                </button>
+              </div>
+            )}
+          </>
         )}
 
-        {transferStatus === 'transferring' && (
-          <div className="mt-6 space-y-4">
-            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <p className="text-gray-700 font-medium mb-3">{file.name}</p>
-              <div className="w-full bg-gray-200 rounded-full h-3">
-                <div
-                  className="bg-blue-600 h-3 rounded-full transition-all"
-                  style={{ width: `${progress}%` }}
-                ></div>
-              </div>
-              <div className="flex justify-between mt-2 text-sm text-gray-600">
-                <span>{progress}%</span>
-                <span>{speed} MB/s</span>
-              </div>
+        {/* Transfer progress */}
+        {(status === 'transferring' || status === 'done') && (
+          <div className="mt-2 p-4 bg-gray-50 rounded-xl border border-gray-200">
+            <p className="text-gray-700 font-medium mb-3 truncate">{file?.name}</p>
+            <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+              <div className="bg-blue-600 h-3 rounded-full transition-all" style={{ width: `${progress}%` }} />
             </div>
-          </div>
-        )}
-
-        {transferStatus === 'completed' && (
-          <div className="mt-6 p-4 bg-green-50 border-2 border-green-200 rounded-lg">
-            <p className="text-green-700 font-medium text-center">✅ Transfer Complete!</p>
-            <button
-              onClick={() => location.reload()}
-              className="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg"
-            >
-              Share Another File
-            </button>
-          </div>
-        )}
-
-        {transferStatus === 'peer disconnected' && (
-          <div className="mt-6 p-4 bg-red-50 border-2 border-red-200 rounded-lg">
-            <p className="text-red-700 font-medium text-center">❌ Peer Disconnected</p>
-            <button
-              onClick={() => location.reload()}
-              className="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg"
-            >
-              Start Over
-            </button>
+            <div className="flex justify-between mt-2 text-sm text-gray-600">
+              <span>{progress}%</span>
+              <span>{speed} MB/s</span>
+            </div>
+            {status === 'done' && (
+              <div className="mt-4 text-center">
+                <p className="text-green-700 font-medium">✅ Sent — receiver is verifying &amp; saving.</p>
+                <button onClick={() => location.reload()} className="mt-3 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-medium">
+                  Share Another File
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -1,282 +1,190 @@
 import { useState, useRef, useEffect } from 'react';
 import SimplePeer from 'simple-peer';
-import { calculateSHA256 } from '../utils/crypto';
+import { calculateSHA256, formatBytes } from '../utils/crypto';
 
-function Receiver({ socket, roomId, peerId }) {
-  const [peerConnected, setPeerConnected] = useState(false);
-  const [transferStatus, setTransferStatus] = useState('waiting');
+const TYPE_CONTROL = 0; // message prefix: JSON control message
+
+function Receiver({ socket, roomId }) {
+  const [status, setStatus] = useState('connecting'); // connecting | ready | receiving | verifying | done | error
   const [progress, setProgress] = useState(0);
-  const [fileName, setFileName] = useState('');
-  const [fileSize, setFileSize] = useState(0);
   const [speed, setSpeed] = useState(0);
+  const [meta, setMeta] = useState(null); // { name, size, hash, totalChunks }
   const [error, setError] = useState(null);
+
   const peerRef = useRef(null);
-  const chunksRef = useRef({});
-  const totalChunksRef = useRef(0);
-  const receivedBytesRef = useRef(0);
-  const startTimeRef = useRef(null);
-  const fileHashRef = useRef(null);
-  const chunkHashesRef = useRef({});
+  const chunksRef = useRef([]);
+  const receivedRef = useRef(0);
+  const startRef = useRef(null);
+  const metaRef = useRef(null);
 
   useEffect(() => {
     if (!socket) return;
 
-    socket.emit('join-room', {
-      roomId,
-      peerId,
-      isInitiator: false
-    });
+    socket.emit('join-room', { roomId });
 
-    socket.on('offer', (data) => {
-      console.log('Received offer from peer');
-      if (!peerRef.current) {
-        initiatePeerConnection(true);
+    const onSignal = ({ data }) => {
+      if (!peerRef.current) createPeer();
+      peerRef.current.signal(data);
+    };
+    const onPeerDisconnected = () => {
+      if (metaRef.current && status !== 'done') {
+        setError('The sender disconnected before the transfer finished.');
+        setStatus('error');
+      } else if (!metaRef.current) {
+        setError('The sender disconnected.');
+        setStatus('error');
       }
-      if (peerRef.current) {
-        peerRef.current.signal(data.offer);
-      }
-    });
+    };
+    const onRoomFull = () => {
+      setError('This room is full (it already has two people).');
+      setStatus('error');
+    };
 
-    socket.on('ice-candidate', (data) => {
-      console.log('Received ICE candidate');
-      if (peerRef.current) {
-        peerRef.current.signal(data.candidate);
-      }
-    });
-
-    socket.on('peer-disconnected', () => {
-      setPeerConnected(false);
-      setTransferStatus('peer disconnected');
-      setError('Sender disconnected');
-    });
-
-    socket.on('room-status', (data) => {
-      console.log('Room status:', data);
-    });
+    socket.on('signal', onSignal);
+    socket.on('peer-disconnected', onPeerDisconnected);
+    socket.on('room-full', onRoomFull);
 
     return () => {
-      socket.off('offer');
-      socket.off('ice-candidate');
-      socket.off('peer-disconnected');
-      socket.off('room-status');
+      socket.off('signal', onSignal);
+      socket.off('peer-disconnected', onPeerDisconnected);
+      socket.off('room-full', onRoomFull);
+      if (peerRef.current) peerRef.current.destroy();
     };
-  }, [socket, roomId, peerId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socket, roomId]);
 
-  function initiatePeerConnection(responder = false) {
-    const peer = new SimplePeer({
-      initiator: false,
-      trickleICE: true,
-      streams: []
-    });
+  function createPeer() {
+    const peer = new SimplePeer({ initiator: false, trickle: true });
 
-    peer.on('signal', (data) => {
-      if (responder) {
-        socket.emit('answer', {
-          roomId,
-          to: 'sender',
-          answer: data
-        });
-      }
-    });
-
+    peer.on('signal', (data) => socket.emit('signal', { roomId, data }));
     peer.on('connect', () => {
-      console.log('Peer connection established');
-      setPeerConnected(true);
+      setStatus((s) => (s === 'connecting' ? 'ready' : s));
       setError(null);
     });
-
-    peer.on('data', (data) => {
-      const message = JSON.parse(data.toString());
-
-      if (message.type === 'file-chunk') {
-        handleChunkReceived(message);
-      } else if (message.type === 'transfer-complete') {
-        handleTransferComplete(message);
-      }
-    });
-
-    peer.on('error', (err) => {
-      console.error('Peer error:', err);
-      setError(`Connection error: ${err.message}`);
-      setPeerConnected(false);
-    });
-
-    peer.on('close', () => {
-      console.log('Peer connection closed');
-      setPeerConnected(false);
-    });
+    peer.on('data', onData);
+    peer.on('error', (err) => setError(`Connection error: ${err.message}`));
 
     peerRef.current = peer;
   }
 
-  function handleChunkReceived(message) {
-    const { chunkIndex, totalChunks, fileName: fname, fileSize: fsize, fileHash, chunkHash, chunkData } = message;
+  function onData(data) {
+    // Every message is framed with a 1-byte type prefix (see Sender).
+    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
 
-    if (!startTimeRef.current) {
-      startTimeRef.current = Date.now();
-      setTransferStatus('receiving');
-      setFileName(fname);
-      setFileSize(fsize);
-      totalChunksRef.current = totalChunks;
-      fileHashRef.current = fileHash;
-    }
-
-    chunksRef.current[chunkIndex] = chunkData;
-    chunkHashesRef.current[chunkIndex] = chunkHash;
-    receivedBytesRef.current += chunkData.length;
-
-    const elapsedSeconds = (Date.now() - startTimeRef.current) / 1000;
-    const speedMBps = (receivedBytesRef.current / (1024 * 1024)) / elapsedSeconds;
-    setSpeed(speedMBps.toFixed(2));
-
-    const progressPercent = Math.round((Object.keys(chunksRef.current).length / totalChunks) * 100);
-    setProgress(progressPercent);
-
-    // Send acknowledgment
-    if (peerRef.current && peerRef.current.connected) {
-      peerRef.current.send(JSON.stringify({
-        type: 'chunk-ack',
-        chunkIndex
-      }));
-    }
-  }
-
-  async function handleTransferComplete(message) {
-    setTransferStatus('verifying');
-
-    // Reconstruct the file
-    const allChunks = [];
-    for (let i = 0; i < totalChunksRef.current; i++) {
-      if (chunksRef.current[i]) {
-        allChunks.push(new Uint8Array(chunksRef.current[i]));
+    if (bytes[0] === TYPE_CONTROL) {
+      const msg = JSON.parse(new TextDecoder().decode(bytes.subarray(1)));
+      if (msg.type === 'header') {
+        metaRef.current = msg;
+        setMeta(msg);
+        chunksRef.current = [];
+        receivedRef.current = 0;
+        startRef.current = Date.now();
+        setStatus('receiving');
+      } else if (msg.type === 'done') {
+        finish();
       }
+      return;
     }
 
-    const fileBlob = new Blob(allChunks);
+    // File chunk. SCTP delivers messages reliably and in order.
+    const chunk = bytes.subarray(1);
+    chunksRef.current.push(chunk);
+    receivedRef.current += chunk.length;
 
-    // Verify file hash
-    const calculatedHash = await calculateSHA256(fileBlob);
-    if (calculatedHash === fileHashRef.current) {
-      console.log('File hash verified successfully');
-      downloadFile(fileBlob, fileName);
-      setTransferStatus('completed');
-      setProgress(100);
-    } else {
-      console.error('File hash mismatch!');
-      setError('File verification failed - hash mismatch');
-      setTransferStatus('error');
+    const m = metaRef.current;
+    if (m) {
+      const elapsed = (Date.now() - startRef.current) / 1000;
+      setProgress(Math.round((receivedRef.current / m.size) * 100));
+      setSpeed(elapsed > 0 ? (receivedRef.current / (1024 * 1024) / elapsed).toFixed(2) : 0);
     }
   }
 
-  function downloadFile(blob, filename) {
-    const url = window.URL.createObjectURL(blob);
+  async function finish() {
+    setStatus('verifying');
+    const blob = new Blob(chunksRef.current);
+
+    // Verify integrity: the receiver re-hashes the reassembled file and
+    // compares against the hash the sender computed before transfer.
+    const hash = await calculateSHA256(blob);
+    if (hash !== metaRef.current.hash) {
+      setError('Integrity check failed — the file hash does not match. Nothing was saved.');
+      setStatus('error');
+      return;
+    }
+
+    download(blob, metaRef.current.name);
+    setProgress(100);
+    setStatus('done');
+  }
+
+  function download(blob, name) {
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = filename;
+    a.download = name;
     document.body.appendChild(a);
     a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
+    a.remove();
+    URL.revokeObjectURL(url);
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-600 to-green-900 p-4 flex items-center justify-center">
-      <div className="bg-white rounded-lg shadow-2xl p-8 max-w-2xl w-full">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">📥 Receive a File</h1>
-          <p className="text-gray-600">Room ID: <span className="font-bold text-green-600">{roomId}</span></p>
-        </div>
+    <div className="min-h-screen bg-gradient-to-br from-emerald-600 to-emerald-900 p-4 flex items-center justify-center">
+      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-xl w-full">
+        <h1 className="text-2xl font-bold text-gray-800 mb-1">📥 Receive a File</h1>
+        <p className="text-gray-500 mb-6">
+          Room <span className="font-mono font-semibold text-emerald-600">{roomId}</span>
+        </p>
 
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border-2 border-red-200 rounded-lg text-red-700">
-            {error}
+          <div className="mb-5 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
+        )}
+
+        {status === 'connecting' && (
+          <div className="p-3 bg-amber-50 text-amber-700 rounded-lg text-sm font-medium">
+            ⏳ Connecting to the sender…
           </div>
         )}
 
-        {!peerConnected && transferStatus === 'waiting' && (
-          <div className="mb-6 p-4 bg-yellow-50 border-2 border-yellow-200 rounded-lg text-yellow-700">
-            ⏳ Waiting for sender to connect...
+        {status === 'ready' && (
+          <div className="p-3 bg-green-50 text-green-700 rounded-lg text-sm font-medium">
+            ✅ Connected. Waiting for the sender to start the transfer…
           </div>
         )}
 
-        {peerConnected && transferStatus === 'waiting' && (
-          <div className="mb-6 p-4 bg-green-50 border-2 border-green-200 rounded-lg text-green-700">
-            ✅ Sender connected. Waiting for file transfer...
-          </div>
-        )}
+        {(status === 'receiving' || status === 'verifying' || status === 'done') && meta && (
+          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+            <div className="flex justify-between text-sm mb-1">
+              <span className="text-gray-700 font-medium truncate pr-2">{meta.name}</span>
+              <span className="text-gray-500 shrink-0">{formatBytes(meta.size)}</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden mt-2">
+              <div className="bg-emerald-600 h-3 rounded-full transition-all" style={{ width: `${progress}%` }} />
+            </div>
+            <div className="flex justify-between mt-2 text-sm text-gray-600">
+              <span>{progress}%</span>
+              <span>{speed} MB/s</span>
+            </div>
 
-        {transferStatus === 'receiving' && (
-          <div className="space-y-4">
-            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <p className="text-gray-700 font-medium mb-2">Receiving File:</p>
-              <p className="text-gray-600 mb-3">{fileName}</p>
-              <p className="text-sm text-gray-500 mb-3">{(fileSize / 1024 / 1024).toFixed(2)} MB total</p>
-
-              <div className="w-full bg-gray-200 rounded-full h-3">
-                <div
-                  className="bg-green-600 h-3 rounded-full transition-all"
-                  style={{ width: `${progress}%` }}
-                ></div>
+            {status === 'verifying' && (
+              <p className="mt-3 text-center text-blue-700 text-sm font-medium">🔍 Verifying SHA-256…</p>
+            )}
+            {status === 'done' && (
+              <div className="mt-4 text-center">
+                <p className="text-green-700 font-medium">✅ Verified &amp; downloaded!</p>
+                <p className="text-gray-400 text-xs mt-1">Check your Downloads folder.</p>
+                <button onClick={() => location.reload()} className="mt-3 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg text-sm font-medium">
+                  Receive Another File
+                </button>
               </div>
-
-              <div className="flex justify-between mt-2 text-sm text-gray-600">
-                <span>{progress}%</span>
-                <span>{speed} MB/s</span>
-              </div>
-            </div>
+            )}
           </div>
         )}
 
-        {transferStatus === 'verifying' && (
-          <div className="space-y-4">
-            <div className="p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
-              <p className="text-blue-700 font-medium text-center">🔍 Verifying file integrity...</p>
-            </div>
-          </div>
-        )}
-
-        {transferStatus === 'completed' && (
-          <div className="space-y-4">
-            <div className="p-4 bg-green-50 border-2 border-green-200 rounded-lg">
-              <p className="text-green-700 font-medium text-center">✅ File Downloaded Successfully!</p>
-              <p className="text-green-700 text-center text-sm mt-2">File has been saved to your downloads.</p>
-              <button
-                onClick={() => location.reload()}
-                className="w-full mt-4 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg"
-              >
-                Receive Another File
-              </button>
-            </div>
-          </div>
-        )}
-
-        {transferStatus === 'peer disconnected' && (
-          <div className="space-y-4">
-            <div className="p-4 bg-red-50 border-2 border-red-200 rounded-lg">
-              <p className="text-red-700 font-medium text-center">❌ Sender Disconnected</p>
-              <button
-                onClick={() => location.reload()}
-                className="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg"
-              >
-                Start Over
-              </button>
-            </div>
-          </div>
-        )}
-
-        {transferStatus === 'error' && (
-          <div className="space-y-4">
-            <div className="p-4 bg-red-50 border-2 border-red-200 rounded-lg">
-              <p className="text-red-700 font-medium text-center">❌ Transfer Failed</p>
-              <p className="text-red-700 text-center text-sm mt-2">{error}</p>
-              <button
-                onClick={() => location.reload()}
-                className="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg"
-              >
-                Start Over
-              </button>
-            </div>
-          </div>
+        {status === 'error' && (
+          <button onClick={() => location.reload()} className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg font-medium">
+            Try Again
+          </button>
         )}
       </div>
     </div>
