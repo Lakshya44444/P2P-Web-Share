@@ -208,4 +208,4 @@ that's a deliberate next step, not part of this MVP.
 
 ## License
 
-MIT — free to use, modify, and learn from.
+MIT : free to use, modify, and learn from.
