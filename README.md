@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🔗 P2P Web Share
+# P2P Web Share
 
 ### Direct, browser-to-browser file transfer — no file ever touches a server.
 
@@ -19,7 +19,7 @@ the initial handshake; it never sees, stores, or relays any file data.
 
 ---
 
-## 🚀 Live demo
+## Live demo
 
 | Service | URL |
 | ------------------- | --------------------------------------------------------------- |
@@ -32,25 +32,25 @@ the initial handshake; it never sees, stores, or relays any file data.
 
 ---
 
-## ✨ Features
+## Features
 
-- **📁 Share rooms** — drag-and-drop or pick a file (up to 50 MB) and get a
-  unique room link to share.
-- **🤝 Socket.io signaling** — coordinates the WebRTC handshake only; **zero file
+- **Share rooms** — drag-and-drop or pick a file (up to 50 MB) and get a unique
+  room link to share.
+- **Socket.io signaling** — coordinates the WebRTC handshake only; **zero file
   data** passes through the server.
-- **⚡ Direct P2P transfer** — files stream over a WebRTC data channel in 16 KB
+- **Direct P2P transfer** — files stream over a WebRTC data channel in 16 KB
   chunks with **backpressure** so the channel buffer never overflows.
-- **🔒 SHA-256 integrity** — the sender hashes the file up front; the receiver
+- **SHA-256 integrity** — the sender hashes the file up front; the receiver
   re-hashes the reassembled file and saves it **only if the hashes match**.
-- **📊 Live progress** — real-time percentage and transfer speed (MB/s) on both
+- **Live progress** — real-time percentage and transfer speed (MB/s) on both
   ends, plus connection status.
-- **🔌 Graceful disconnects** — if a peer closes its tab, the other side is
-  notified instead of hanging or crashing.
-- **💾 Auto-download** — the verified file is saved automatically on completion.
+- **Graceful disconnects** — if a peer closes its tab, the other side is notified
+  instead of hanging or crashing.
+- **Auto-download** — the verified file is saved automatically on completion.
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -84,21 +84,21 @@ file itself, flowing **directly** between the two browsers.
 
 ---
 
-## 🧰 Tech stack
+## Tech stack
 
-| Layer                | Technology                          |
-| -------------------- | ----------------------------------- |
-| **Frontend**         | React + Vite + Tailwind CSS         |
-| **P2P transport**    | WebRTC via [simple-peer]            |
-| **Signaling server** | Node.js + Express + Socket.io       |
-| **Integrity**        | Web Crypto API (SHA-256)            |
+| Layer                | Technology                            |
+| -------------------- | ------------------------------------- |
+| **Frontend**         | React + Vite + Tailwind CSS           |
+| **P2P transport**    | WebRTC via [simple-peer]              |
+| **Signaling server** | Node.js + Express + Socket.io         |
+| **Integrity**        | Web Crypto API (SHA-256)              |
 | **Hosting**          | Vercel (frontend) · Railway (backend) |
 
 [simple-peer]: https://github.com/feross/simple-peer
 
 ---
 
-## 📂 Project structure
+## Project structure
 
 ```text
 P2P-Web-Share/
@@ -133,7 +133,7 @@ P2P-Web-Share/
 
 ---
 
-## 💻 Run locally
+## Run locally
 
 You'll need **Node.js 18+** and two terminals.
 
@@ -141,14 +141,14 @@ You'll need **Node.js 18+** and two terminals.
 ```bash
 cd backend
 npm install
-npm start            # → http://localhost:4000
+npm start            # http://localhost:4000
 ```
 
 **2 · Frontend**
 ```bash
 cd frontend
 npm install
-npm run dev          # → http://localhost:5173
+npm run dev          # http://localhost:5173
 ```
 
 ### Usage
@@ -160,19 +160,19 @@ npm run dev          # → http://localhost:5173
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 Environment variables (templates in each folder's `.env.example`):
 
-| Variable           | Side     | Default                 | Purpose                                |
-| ------------------ | -------- | ----------------------- | -------------------------------------- |
-| `PORT`             | backend  | `4000`                  | Port the signaling server listens on   |
-| `FRONTEND_URL`     | backend  | `http://localhost:5173` | Allowed CORS origin (your frontend URL)|
-| `VITE_BACKEND_URL` | frontend | `http://localhost:4000` | Backend URL the client connects to     |
+| Variable           | Side     | Default                 | Purpose                                 |
+| ------------------ | -------- | ----------------------- | --------------------------------------- |
+| `PORT`             | backend  | `4000`                  | Port the signaling server listens on    |
+| `FRONTEND_URL`     | backend  | `http://localhost:5173` | Allowed CORS origin (your frontend URL) |
+| `VITE_BACKEND_URL` | frontend | `http://localhost:4000` | Backend URL the client connects to      |
 
 ---
 
-## 🧪 Testing
+## Testing
 
 The signaling server ships with an automated test covering room creation, the
 handshake relay, peer-disconnect notifications, and room-full handling:
@@ -184,19 +184,19 @@ npm test
 
 ---
 
-## ☁️ Deployment
+## Deployment
 
 Free-tier friendly, split across two hosts:
 
-- **Frontend → Vercel / Netlify.** Root directory `frontend`, framework **Vite**,
+- **Frontend -> Vercel / Netlify.** Root directory `frontend`, framework **Vite**,
   build `npm run build`, output `dist`. Set `VITE_BACKEND_URL` to the backend URL.
-- **Backend → Railway / Render.** Root directory `backend`, start `npm start`.
+- **Backend -> Railway / Render.** Root directory `backend`, start `npm start`.
   Set `FRONTEND_URL` to the deployed frontend URL (for CORS); the host provides
   `PORT` automatically.
 
 ---
 
-## 🌐 A note on networks
+## A note on networks
 
 WebRTC needs a direct route between peers, which works on open networks and
 across the internet. Some restrictive networks (e.g. campus or corporate Wi-Fi)
@@ -206,6 +206,6 @@ that's a deliberate next step, not part of this MVP.
 
 ---
 
-## 📄 License
+## License
 
 MIT — free to use, modify, and learn from.
