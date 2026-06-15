@@ -2,7 +2,7 @@
 
 # P2P Web Share
 
-### Direct, browser-to-browser file transfer — no file ever touches a server.
+### Direct, browser-to-browser file transfer - no file ever touches a server.
 
 Drop a file, share a link, and the recipient connects **directly** to your
 browser over WebRTC to stream it. A lightweight Socket.io server only brokers
