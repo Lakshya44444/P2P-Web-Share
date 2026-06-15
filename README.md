@@ -1,85 +1,105 @@
 # P2P Web Share
 
 Direct, browser-to-browser file transfer. Drop a file, share a link, and the
-recipient's browser connects **directly** to yours over WebRTC to stream the
-file. A small Socket.io signaling server only helps the two browsers find each
-other during the handshake — it never sees, stores, or relays any file data.
+recipient connects **directly** to you over WebRTC to stream it. A lightweight
+Socket.io server only brokers the initial handshake — it never touches file data.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph SB["Sender browser"]
+      SUI["React UI"] --> SP["simple-peer / WebRTC"]
+    end
+    subgraph RB["Receiver browser"]
+      RP["simple-peer / WebRTC"] --> RUI["React UI"]
+    end
+    SIG["Signaling server<br/>Node + Express + Socket.io"]
+
+    SP -. "1 · handshake: SDP offer/answer + ICE" .-> SIG
+    SIG -. "relays to the other peer" .-> RP
+    SP == "2 · file data — direct P2P, DTLS-encrypted" ==> RP
+```
 
 ## How it works
 
-```
-  Sender browser  ──┐                              ┌──  Receiver browser
-                    │   1. handshake (SDP + ICE)   │
-                    └────────► Signaling ◄─────────┘
-                               server (Socket.io)
-                    │                              │
-                    └──── 2. file data (WebRTC ────┘
-                          data channel, direct P2P)
-```
-
-1. The sender creates a room and shares the link (`/?room=ABC123`).
-2. When the receiver opens the link, both browsers exchange WebRTC offer/answer
-   and ICE candidates through the signaling server.
-3. Once connected, the file streams **directly** between the two browsers over
-   an encrypted (DTLS) data channel. The server is no longer involved.
+1. The **sender** clicks *Share a File*; the server creates a room and returns a
+   link like `/?room=ABC123`.
+2. The **receiver** opens that link and joins the same room.
+3. The browsers exchange WebRTC **offer/answer + ICE** through the server.
+4. A direct, **DTLS-encrypted** data channel opens between the two browsers.
+5. The file streams in **16 KB chunks** with backpressure — the server is now idle.
+6. The receiver reassembles the chunks, **verifies the SHA-256 hash**, and the
+   file **downloads automatically**.
 
 ## Features
 
-- **Drag-and-drop sharing** with a unique room link (files up to 50 MB).
-- **Socket.io signaling** for the WebRTC handshake only — zero file data.
-- **Direct P2P transfer** over a WebRTC data channel, streamed in 16 KB chunks
-  with **backpressure** so the channel buffer never overflows.
-- **SHA-256 integrity check**: the sender hashes the file up front; the receiver
-  re-hashes the reassembled file and only saves it if the hashes match.
-- **Live progress**: transfer percentage and speed (MB/s) on both ends.
-- **Graceful disconnects**: closing a tab notifies the other side instead of
-  hanging or crashing.
-- **Auto-download**: the verified file is saved automatically on completion.
+- **Share rooms** — drag-and-drop or pick a file (up to 50 MB) and get a unique
+  room link to share.
+- **Socket.io signaling** — coordinates the WebRTC handshake only; zero file data
+  passes through the server.
+- **Direct P2P transfer** — files stream over a WebRTC data channel in 16 KB
+  chunks with **backpressure** so the channel buffer never overflows.
+- **SHA-256 integrity** — the sender hashes the file up front; the receiver
+  re-hashes the reassembled file and saves it only if the hashes match.
+- **Live progress** — real-time percentage and transfer speed (MB/s) on both
+  ends, plus connection status.
+- **Graceful disconnects** — if a peer closes its tab, the other side is notified
+  instead of hanging or crashing.
+- **Auto-download** — the verified file is saved automatically on completion.
 
 ## Tech stack
 
-| Layer            | Technology                          |
-| ---------------- | ----------------------------------- |
-| Frontend         | React + Vite + Tailwind CSS         |
-| P2P transport    | WebRTC via [simple-peer]            |
-| Signaling server | Node.js + Express + Socket.io       |
+| Layer            | Technology                    |
+| ---------------- | ----------------------------- |
+| Frontend         | React + Vite + Tailwind CSS   |
+| P2P transport    | WebRTC via [simple-peer]      |
+| Signaling server | Node.js + Express + Socket.io |
+| Integrity        | Web Crypto API (SHA-256)      |
 
 [simple-peer]: https://github.com/feross/simple-peer
 
 ## Project structure
 
 ```
-backend/          Express + Socket.io signaling server
-  server.js
-frontend/         React app (Vite)
+backend/
+  server.js              Express + Socket.io signaling server
+  test-signaling.js      Automated signaling tests (npm test)
+frontend/
+  public/illustrations/  Bundled SVG artwork
   src/
-    App.jsx               Landing page + room creation/join
+    App.jsx              Landing page + room creation/join
     components/
-      Sender.jsx          Sends the file (WebRTC initiator)
-      Receiver.jsx        Receives, verifies, downloads
-    utils/crypto.js       SHA-256 + byte formatting
+      Sender.jsx         Sends the file (WebRTC initiator)
+      Receiver.jsx       Receives, verifies, and downloads
+      icons.jsx          Inline SVG icon set
+    utils/crypto.js      SHA-256 + byte formatting helpers
 ```
 
 ## Run locally
 
-You need two terminals.
+In two terminals:
 
-**1. Backend**
+**1 · Backend**
 ```bash
 cd backend
 npm install
 npm start            # http://localhost:4000
 ```
 
-**2. Frontend**
+**2 · Frontend**
 ```bash
 cd frontend
 npm install
 npm run dev          # http://localhost:5173
 ```
 
-Open `http://localhost:5173`, click **Share a File**, copy the link, and open it
-in a second browser tab (or another device). Pick a file and send it.
+## Usage
+
+1. Open `http://localhost:5173` and click **Share a File**.
+2. Copy the room link and open it in a second tab, window, or device.
+3. Back on the sender, drag in a file and click **Send File**.
+4. The receiver verifies the file and downloads it automatically.
 
 ## Configuration
 
@@ -91,21 +111,29 @@ Environment variables (see `.env.example` in each folder):
 | `FRONTEND_URL`     | backend  | `http://localhost:5173` |
 | `VITE_BACKEND_URL` | frontend | `http://localhost:4000` |
 
+## Testing
+
+An automated test covers room creation, handshake relay, peer-disconnect, and
+room-full handling:
+
+```bash
+cd backend
+npm test
+```
+
 ## Deployment
 
-- **Frontend** → Vercel / Netlify. Build command `npm run build`, output `dist`.
-  Set `VITE_BACKEND_URL` to your deployed backend URL.
-- **Backend** → Render / Railway. Start command `npm start`. Set `FRONTEND_URL`
-  to your deployed frontend URL.
+- **Frontend** → Vercel / Netlify. Build `npm run build`, output `dist`; set
+  `VITE_BACKEND_URL` to the deployed backend URL.
+- **Backend** → Render / Railway. Start `npm start`; set `FRONTEND_URL` to the
+  deployed frontend URL.
 
 ## A note on networks
 
-WebRTC needs a route between the two peers. On open networks and across the
-internet this works directly. Some restrictive networks (e.g. locked-down
-campus or corporate Wi-Fi) block peer-to-peer connections; in that case use a
-mobile hotspot, or test both tabs on the same machine. Production deployments
-typically add a **TURN server** to relay through such firewalls — that's a
-deliberate next step, not part of this MVP.
+WebRTC needs a direct route between peers, which works on open networks and the
+internet. Restrictive networks (e.g. campus or corporate Wi-Fi) may block P2P —
+use a mobile hotspot or run both tabs on one machine. Production apps add a
+**TURN server** to relay through such firewalls; a deliberate next step, not this MVP.
 
 ## License
 
