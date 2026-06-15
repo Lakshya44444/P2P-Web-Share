@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import SimplePeer from 'simple-peer';
 import { calculateSHA256, formatBytes } from '../utils/crypto';
+import { Logo, Download, Check, Shield, Spinner, Warn, File as FileIcon } from './icons';
 
 const TYPE_CONTROL = 0; // message prefix: JSON control message
 
@@ -129,63 +130,97 @@ function Receiver({ socket, roomId }) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-600 to-emerald-900 p-4 flex items-center justify-center">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-xl w-full">
-        <h1 className="text-2xl font-bold text-gray-800 mb-1">📥 Receive a File</h1>
-        <p className="text-gray-500 mb-6">
-          Room <span className="font-mono font-semibold text-emerald-600">{roomId}</span>
-        </p>
-
-        {error && (
-          <div className="mb-5 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
-        )}
-
-        {status === 'connecting' && (
-          <div className="p-3 bg-amber-50 text-amber-700 rounded-lg text-sm font-medium">
-            ⏳ Connecting to the sender…
+    <div className="app-bg min-h-screen p-4 flex items-center justify-center">
+      <div className="w-full max-w-xl animate-fade-in">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-2.5">
+            <span className="grid place-items-center w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/30">
+              <Logo className="w-5 h-5" />
+            </span>
+            <div>
+              <p className="text-white font-semibold leading-tight">Receiving</p>
+              <p className="text-slate-400 text-xs">Room <span className="font-mono text-emerald-300">{roomId}</span></p>
+            </div>
           </div>
-        )}
+          <span className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full ring-1 ${status === 'connecting' ? 'bg-amber-500/15 text-amber-300 ring-amber-400/30' : status === 'error' ? 'bg-red-500/15 text-red-300 ring-red-400/30' : 'bg-emerald-500/15 text-emerald-300 ring-emerald-400/30'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${status === 'connecting' ? 'bg-amber-400 animate-pulse' : status === 'error' ? 'bg-red-400' : 'bg-emerald-400'}`} />
+            {status === 'connecting' ? 'Connecting' : status === 'error' ? 'Disconnected' : 'Connected'}
+          </span>
+        </div>
 
-        {status === 'ready' && (
-          <div className="p-3 bg-green-50 text-green-700 rounded-lg text-sm font-medium">
-            ✅ Connected. Waiting for the sender to start the transfer…
-          </div>
-        )}
+        <div className="bg-white/95 backdrop-blur rounded-3xl shadow-2xl ring-1 ring-white/10 p-7">
+          {error && (
+            <div className="mb-5 flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+              <Warn className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
 
-        {(status === 'receiving' || status === 'verifying' || status === 'done') && meta && (
-          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-            <div className="flex justify-between text-sm mb-1">
-              <span className="text-gray-700 font-medium truncate pr-2">{meta.name}</span>
-              <span className="text-gray-500 shrink-0">{formatBytes(meta.size)}</span>
+          {status === 'connecting' && (
+            <div className="flex flex-col items-center text-center py-6">
+              <Spinner className="w-8 h-8 text-amber-500 mb-3" />
+              <p className="text-slate-600 font-medium">Connecting to the sender…</p>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden mt-2">
-              <div className="bg-emerald-600 h-3 rounded-full transition-all" style={{ width: `${progress}%` }} />
-            </div>
-            <div className="flex justify-between mt-2 text-sm text-gray-600">
-              <span>{progress}%</span>
-              <span>{speed} MB/s</span>
-            </div>
+          )}
 
-            {status === 'verifying' && (
-              <p className="mt-3 text-center text-blue-700 text-sm font-medium">🔍 Verifying SHA-256…</p>
-            )}
-            {status === 'done' && (
-              <div className="mt-4 text-center">
-                <p className="text-green-700 font-medium">✅ Verified &amp; downloaded!</p>
-                <p className="text-gray-400 text-xs mt-1">Check your Downloads folder.</p>
-                <button onClick={() => location.reload()} className="mt-3 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg text-sm font-medium">
-                  Receive Another File
-                </button>
+          {status === 'ready' && (
+            <div className="flex flex-col items-center text-center py-6">
+              <span className="grid place-items-center w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 mb-3">
+                <Download className="w-7 h-7" />
+              </span>
+              <p className="text-slate-700 font-medium">Connected to the sender</p>
+              <p className="text-slate-400 text-sm">Waiting for the transfer to start…</p>
+            </div>
+          )}
+
+          {(status === 'receiving' || status === 'verifying' || status === 'done') && meta && (
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
+              <div className="flex items-center gap-3 mb-3">
+                <span className="grid place-items-center w-10 h-10 rounded-xl bg-white text-emerald-600 ring-1 ring-slate-200 shrink-0">
+                  <FileIcon className="w-5 h-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-slate-800 font-medium truncate">{meta.name}</p>
+                  <p className="text-slate-400 text-xs">{formatBytes(meta.size)}</p>
+                </div>
               </div>
-            )}
-          </div>
-        )}
+              <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                <div className="bg-gradient-to-r from-emerald-500 to-teal-500 h-2.5 rounded-full transition-all" style={{ width: `${progress}%` }} />
+              </div>
+              <div className="flex justify-between mt-2 text-sm">
+                <span className="font-semibold text-slate-700">{progress}%</span>
+                <span className="text-slate-500">{speed} MB/s</span>
+              </div>
 
-        {status === 'error' && (
-          <button onClick={() => location.reload()} className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg font-medium">
-            Try Again
-          </button>
-        )}
+              {status === 'verifying' && (
+                <p className="mt-3 flex items-center justify-center gap-2 text-indigo-600 text-sm font-medium">
+                  <Spinner className="w-4 h-4" /> Verifying SHA-256…
+                </p>
+              )}
+              {status === 'done' && (
+                <div className="mt-4 flex flex-col items-center text-center">
+                  <span className="grid place-items-center w-11 h-11 rounded-full bg-emerald-100 text-emerald-600 mb-2">
+                    <Check className="w-6 h-6" />
+                  </span>
+                  <p className="text-slate-700 font-medium">Verified &amp; downloaded</p>
+                  <p className="text-slate-400 text-xs mt-1 flex items-center gap-1">
+                    <Shield className="w-3.5 h-3.5" /> Integrity confirmed · check your Downloads folder
+                  </p>
+                  <button onClick={() => location.reload()} className="mt-3 bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-xl text-sm font-medium">
+                    Receive Another File
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {status === 'error' && (
+            <button onClick={() => location.reload()} className="w-full mt-1 bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-medium">
+              Try Again
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

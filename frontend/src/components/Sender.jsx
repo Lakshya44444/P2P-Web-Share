@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import SimplePeer from 'simple-peer';
 import { calculateSHA256, formatBytes } from '../utils/crypto';
+import { Logo, Upload, Copy, Check, Spinner, Warn, File as FileIcon, Send } from './icons';
 
 const CHUNK_SIZE = 16 * 1024; // 16 KB — safe max for WebRTC data channels
 const BUFFER_HIGH = 1 * 1024 * 1024; // pause sending above 1 MB buffered
@@ -160,96 +161,132 @@ function Sender({ socket, roomId }) {
     onFileChosen(e.dataTransfer.files[0]);
   }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-900 p-4 flex items-center justify-center">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-xl w-full">
-        <h1 className="text-2xl font-bold text-gray-800 mb-1">📤 Share a File</h1>
-        <p className="text-gray-500 mb-6">
-          Room <span className="font-mono font-semibold text-blue-600">{roomId}</span>
-        </p>
+  const shareUrl = `${window.location.origin}/?room=${roomId}`;
 
-        {/* Share link */}
-        <div className="mb-5 p-4 bg-blue-50 rounded-xl border border-blue-100">
-          <p className="text-sm text-gray-600 mb-2">Send this link to the receiver:</p>
+  return (
+    <div className="app-bg min-h-screen p-4 flex items-center justify-center">
+      <div className="w-full max-w-xl animate-fade-in">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-2.5">
+            <span className="grid place-items-center w-9 h-9 rounded-xl bg-indigo-500/15 text-indigo-300 ring-1 ring-indigo-400/30">
+              <Logo className="w-5 h-5" />
+            </span>
+            <div>
+              <p className="text-white font-semibold leading-tight">Sending</p>
+              <p className="text-slate-400 text-xs">Room <span className="font-mono text-indigo-300">{roomId}</span></p>
+            </div>
+          </div>
+          <span className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full ring-1 ${peerConnected ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-400/30' : 'bg-amber-500/15 text-amber-300 ring-amber-400/30'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${peerConnected ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'}`} />
+            {peerConnected ? 'Receiver connected' : 'Waiting for receiver'}
+          </span>
+        </div>
+
+        <div className="bg-white/95 backdrop-blur rounded-3xl shadow-2xl ring-1 ring-white/10 p-7">
+          {/* Share link */}
+          <label className="block text-sm font-medium text-slate-600 mb-2">Share this link with the receiver</label>
           <div className="flex gap-2">
             <input
               readOnly
-              value={`${window.location.origin}/?room=${roomId}`}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm"
+              value={shareUrl}
+              onFocus={(e) => e.target.select()}
+              className="flex-1 px-3 py-2.5 border border-slate-300 rounded-xl bg-slate-50 text-slate-700 text-sm"
             />
-            <button onClick={copyLink} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
-              {copied ? 'Copied!' : 'Copy'}
+            <button
+              onClick={copyLink}
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-white transition ${copied ? 'bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+            >
+              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+              {copied ? 'Copied' : 'Copy'}
             </button>
           </div>
-        </div>
 
-        {/* Connection status */}
-        <div className={`mb-5 p-3 rounded-lg text-sm font-medium ${peerConnected ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
-          {peerConnected ? '✅ Receiver connected' : '⏳ Waiting for the receiver to open the link…'}
-        </div>
-
-        {error && (
-          <div className="mb-5 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
-        )}
-
-        {/* File picker */}
-        {(status === 'waiting' || status === 'hashing' || status === 'ready') && (
-          <>
-            <div
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={handleDrop}
-              className="border-2 border-dashed border-blue-300 rounded-xl p-8 text-center hover:bg-blue-50 transition"
-            >
-              <div className="text-4xl mb-2">📁</div>
-              <p className="text-gray-700 font-medium">Drag &amp; drop a file here</p>
-              <p className="text-gray-400 text-sm mb-4">or pick one (max 50 MB)</p>
-              <input id="file-input" type="file" className="hidden" onChange={(e) => onFileChosen(e.target.files[0])} />
-              <label htmlFor="file-input" className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-medium cursor-pointer inline-block">
-                Choose File
-              </label>
+          {error && (
+            <div className="mt-5 flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+              <Warn className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>{error}</span>
             </div>
+          )}
 
-            {file && (
-              <div className="mt-5 p-4 bg-gray-50 rounded-xl border border-gray-200">
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-gray-700 font-medium truncate pr-2">{file.name}</span>
-                  <span className="text-gray-500 shrink-0">{formatBytes(file.size)}</span>
+          {/* File picker */}
+          {(status === 'waiting' || status === 'hashing' || status === 'ready') && (
+            <>
+              <div
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={handleDrop}
+                className="mt-5 border-2 border-dashed border-slate-300 rounded-2xl p-8 text-center hover:border-indigo-400 hover:bg-indigo-50/40 transition"
+              >
+                <span className="grid place-items-center w-14 h-14 mx-auto rounded-2xl bg-indigo-50 text-indigo-600 mb-3">
+                  <Upload className="w-7 h-7" />
+                </span>
+                <p className="text-slate-700 font-medium">Drag &amp; drop a file here</p>
+                <p className="text-slate-400 text-sm mb-4">or choose one — up to 50 MB</p>
+                <input id="file-input" type="file" className="hidden" onChange={(e) => onFileChosen(e.target.files[0])} />
+                <label htmlFor="file-input" className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition">
+                  Choose File
+                </label>
+              </div>
+
+              {file && (
+                <div className="mt-5 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                  <div className="flex items-center gap-3">
+                    <span className="grid place-items-center w-10 h-10 rounded-xl bg-white text-indigo-600 ring-1 ring-slate-200 shrink-0">
+                      <FileIcon className="w-5 h-5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-slate-800 font-medium truncate">{file.name}</p>
+                      <p className="text-slate-400 text-xs">{formatBytes(file.size)}</p>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-400">
+                    {status === 'hashing' ? (
+                      <><Spinner className="w-3.5 h-3.5" /> Computing SHA-256…</>
+                    ) : fileHash ? (
+                      <span className="font-mono truncate">SHA-256: {fileHash}</span>
+                    ) : null}
+                  </div>
+                  <button
+                    onClick={startTransfer}
+                    disabled={!peerConnected || status === 'hashing'}
+                    className="w-full mt-3 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-semibold py-3 rounded-xl transition"
+                  >
+                    <Send className="w-4 h-4" />
+                    {peerConnected ? 'Send File' : 'Waiting for receiver…'}
+                  </button>
                 </div>
-                {status === 'hashing' && <p className="text-xs text-gray-400">Computing SHA-256…</p>}
-                {fileHash && <p className="text-xs text-gray-400 font-mono truncate">SHA-256: {fileHash}</p>}
-                <button
-                  onClick={startTransfer}
-                  disabled={!peerConnected || status === 'hashing'}
-                  className="w-full mt-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white font-semibold py-2.5 rounded-lg transition"
-                >
-                  {peerConnected ? '🚀 Send File' : 'Waiting for receiver…'}
-                </button>
-              </div>
-            )}
-          </>
-        )}
+              )}
+            </>
+          )}
 
-        {/* Transfer progress */}
-        {(status === 'transferring' || status === 'done') && (
-          <div className="mt-2 p-4 bg-gray-50 rounded-xl border border-gray-200">
-            <p className="text-gray-700 font-medium mb-3 truncate">{file?.name}</p>
-            <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-              <div className="bg-blue-600 h-3 rounded-full transition-all" style={{ width: `${progress}%` }} />
-            </div>
-            <div className="flex justify-between mt-2 text-sm text-gray-600">
-              <span>{progress}%</span>
-              <span>{speed} MB/s</span>
-            </div>
-            {status === 'done' && (
-              <div className="mt-4 text-center">
-                <p className="text-green-700 font-medium">✅ Sent — receiver is verifying &amp; saving.</p>
-                <button onClick={() => location.reload()} className="mt-3 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-medium">
-                  Share Another File
-                </button>
+          {/* Transfer progress */}
+          {(status === 'transferring' || status === 'done') && (
+            <div className="mt-5 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-slate-700 font-medium truncate pr-2">{file?.name}</span>
+                <span className="text-slate-400 text-xs shrink-0">{formatBytes(file?.size || 0)}</span>
               </div>
-            )}
-          </div>
-        )}
+              <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                <div className="bg-gradient-to-r from-indigo-500 to-sky-500 h-2.5 rounded-full transition-all" style={{ width: `${progress}%` }} />
+              </div>
+              <div className="flex justify-between mt-2 text-sm">
+                <span className="font-semibold text-slate-700">{progress}%</span>
+                <span className="text-slate-500">{speed} MB/s</span>
+              </div>
+              {status === 'done' && (
+                <div className="mt-4 flex flex-col items-center text-center">
+                  <span className="grid place-items-center w-11 h-11 rounded-full bg-emerald-100 text-emerald-600 mb-2">
+                    <Check className="w-6 h-6" />
+                  </span>
+                  <p className="text-slate-700 font-medium">Sent — the receiver is verifying &amp; saving.</p>
+                  <button onClick={() => location.reload()} className="mt-3 bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-xl text-sm font-medium">
+                    Share Another File
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

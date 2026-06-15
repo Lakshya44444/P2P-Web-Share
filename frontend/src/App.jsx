@@ -2,8 +2,16 @@ import { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
 import Sender from './components/Sender';
 import Receiver from './components/Receiver';
+import { Logo, Upload, Download, Shield, Link as LinkIcon } from './components/icons';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000';
+
+// Accept either a bare room code ("WWFLEF") or a full pasted link
+// ("http://localhost:5173/?room=WWFLEF") and return just the code.
+function extractRoomCode(value) {
+  const match = value.match(/room=([a-z0-9]+)/i);
+  return (match ? match[1] : value).trim().toUpperCase();
+}
 
 function App() {
   const [socket, setSocket] = useState(null);
@@ -49,47 +57,79 @@ function App() {
   if (mode === 'receiver') return <Receiver socket={socket} roomId={roomId} />;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-900 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
-        <h1 className="text-3xl font-bold text-gray-800 text-center mb-1">P2P Web Share</h1>
-        <p className="text-gray-500 text-center mb-8">Direct browser-to-browser file transfer</p>
-
-        {error && (
-          <div className="mb-5 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
-        )}
-
-        <button
-          onClick={createRoom}
-          disabled={!connected || busy}
-          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-semibold py-3 rounded-lg transition"
-        >
-          {busy ? 'Creating room…' : connected ? '📤 Share a File' : 'Connecting…'}
-        </button>
-
-        <div className="flex items-center my-6">
-          <div className="flex-1 border-t border-gray-200" />
-          <span className="px-3 text-sm text-gray-400">or</span>
-          <div className="flex-1 border-t border-gray-200" />
+    <div className="app-bg min-h-screen flex items-center justify-center p-4">
+      <div className="relative w-full max-w-md animate-fade-in">
+        {/* Brand */}
+        <div className="flex items-center justify-center gap-2.5 mb-6">
+          <span className="grid place-items-center w-10 h-10 rounded-xl bg-indigo-500/15 text-indigo-300 ring-1 ring-indigo-400/30">
+            <Logo className="w-6 h-6" />
+          </span>
+          <span className="text-xl font-semibold tracking-tight text-white">P2P Web Share</span>
         </div>
 
-        <input
-          type="text"
-          placeholder="Enter Room ID"
-          value={roomId}
-          onChange={(e) => setRoomId(e.target.value.toUpperCase())}
-          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <button
-          onClick={() => roomId && setMode('receiver')}
-          disabled={!connected || !roomId}
-          className="w-full mt-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white font-semibold py-3 rounded-lg transition"
-        >
-          📥 Receive a File
-        </button>
+        <div className="bg-white/95 backdrop-blur rounded-3xl shadow-2xl ring-1 ring-white/10 p-7">
+          <h1 className="text-2xl font-bold text-slate-900 text-center">Send files, peer to peer</h1>
+          <p className="text-slate-500 text-center text-sm mt-1.5 mb-7">
+            Files stream directly between browsers. The server only brokers the connection.
+          </p>
 
-        <div className="mt-6 flex items-center justify-center text-sm text-gray-500">
-          <span className={`w-2 h-2 rounded-full mr-2 ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
-          Signaling server: {connected ? 'connected' : 'disconnected'}
+          {error && (
+            <div className="mb-5 flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+              {error}
+            </div>
+          )}
+
+          <button
+            onClick={createRoom}
+            disabled={!connected || busy}
+            className="group w-full flex items-center justify-center gap-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-semibold py-3.5 rounded-xl shadow-lg shadow-indigo-600/20 transition"
+          >
+            <Upload className="w-5 h-5" />
+            {busy ? 'Creating room…' : connected ? 'Share a File' : 'Connecting…'}
+          </button>
+
+          <div className="flex items-center my-6">
+            <div className="flex-1 border-t border-slate-200" />
+            <span className="px-3 text-xs uppercase tracking-wider text-slate-400">or</span>
+            <div className="flex-1 border-t border-slate-200" />
+          </div>
+
+          <label className="block text-sm font-medium text-slate-600 mb-1.5">Have a room code?</label>
+          <div className="relative">
+            <LinkIcon className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Enter Room ID or paste link"
+              value={roomId}
+              onChange={(e) => setRoomId(e.target.value)}
+              className="w-full pl-9 pr-3 py-2.5 border border-slate-300 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            />
+          </div>
+          <button
+            onClick={() => {
+              const code = extractRoomCode(roomId);
+              if (code) {
+                setRoomId(code);
+                setMode('receiver');
+              }
+            }}
+            disabled={!connected || !roomId}
+            className="w-full mt-3 flex items-center justify-center gap-2.5 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white font-semibold py-3.5 rounded-xl transition"
+          >
+            <Download className="w-5 h-5" />
+            Receive a File
+          </button>
+
+          <div className="mt-6 flex items-center justify-center text-xs text-slate-500">
+            <span className={`w-2 h-2 rounded-full mr-2 ${connected ? 'bg-emerald-500' : 'bg-red-500'}`} />
+            Signaling server {connected ? 'connected' : 'disconnected'}
+          </div>
+        </div>
+
+        {/* Trust line */}
+        <div className="mt-5 flex items-center justify-center gap-2 text-xs text-slate-400">
+          <Shield className="w-4 h-4" />
+          End-to-end over WebRTC · SHA-256 verified · No file stored on the server
         </div>
       </div>
     </div>

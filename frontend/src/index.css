@@ -2,11 +2,54 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.4s ease-out both;
+}
+
+/* Soft animated gradient backdrop used across screens */
+.app-bg {
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(1200px 600px at 10% -10%, #1e293b, transparent),
+    radial-gradient(1000px 500px at 110% 110%, #0f172a, transparent),
+    linear-gradient(135deg, #0b1120 0%, #111827 100%);
+}
+
+.app-bg::before,
+.app-bg::after {
+  content: '';
+  position: absolute;
+  width: 480px;
+  height: 480px;
+  border-radius: 9999px;
+  filter: blur(120px);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.app-bg::before {
+  top: -160px;
+  left: -120px;
+  background: #4f46e5;
+}
+
+.app-bg::after {
+  bottom: -180px;
+  right: -120px;
+  background: #0ea5e9;
 }
