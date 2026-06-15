@@ -34,19 +34,19 @@ the initial handshake; it never sees, stores, or relays any file data.
 
 ## Features
 
-- **Share rooms** — drag-and-drop or pick a file (up to 50 MB) and get a unique
+- **Share rooms** - drag-and-drop or pick a file (up to 50 MB) and get a unique
   room link to share.
-- **Socket.io signaling** — coordinates the WebRTC handshake only; **zero file
+- **Socket.io signaling** - coordinates the WebRTC handshake only; **zero file
   data** passes through the server.
-- **Direct P2P transfer** — files stream over a WebRTC data channel in 16 KB
+- **Direct P2P transfer** - files stream over a WebRTC data channel in 16 KB
   chunks with **backpressure** so the channel buffer never overflows.
-- **SHA-256 integrity** — the sender hashes the file up front; the receiver
+- **SHA-256 integrity** - the sender hashes the file up front; the receiver
   re-hashes the reassembled file and saves it **only if the hashes match**.
-- **Live progress** — real-time percentage and transfer speed (MB/s) on both
+- **Live progress** - real-time percentage and transfer speed (MB/s) on both
   ends, plus connection status.
-- **Graceful disconnects** — if a peer closes its tab, the other side is notified
+- **Graceful disconnects** - if a peer closes its tab, the other side is notified
   instead of hanging or crashing.
-- **Auto-download** — the verified file is saved automatically on completion.
+- **Auto-download** - the verified file is saved automatically on completion.
 
 ---
 
