@@ -132,7 +132,6 @@ function Receiver({ socket, roomId }) {
   return (
     <div className="app-bg min-h-screen p-4 flex items-center justify-center">
       <div className="w-full max-w-xl animate-fade-in">
-        {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2.5">
             <span className="grid place-items-center w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 ring-1 ring-emerald-200">

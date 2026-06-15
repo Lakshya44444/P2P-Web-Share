@@ -59,7 +59,6 @@ function App() {
   return (
     <div className="app-bg min-h-screen flex items-center justify-center p-4">
       <div className="relative w-full max-w-md animate-fade-in">
-        {/* Brand */}
         <div className="flex items-center justify-center gap-2.5 mb-6">
           <span className="grid place-items-center w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 ring-1 ring-indigo-200">
             <Logo className="w-6 h-6" />
@@ -132,7 +131,6 @@ function App() {
           </div>
         </div>
 
-        {/* Trust line */}
         <div className="mt-5 flex items-center justify-center gap-2 text-xs text-slate-400">
           <Shield className="w-4 h-4" />
           End-to-end over WebRTC · SHA-256 verified · No file stored on the server

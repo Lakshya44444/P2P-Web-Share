@@ -1,7 +1,5 @@
-// P2P Web Share — signaling server
-// Coordinates the WebRTC handshake between two browsers. It relays SDP
-// offers/answers and ICE candidates, but never sees any file data: the
-// file itself flows directly peer-to-peer over the WebRTC data channel.
+// P2P Web Share signaling server: relays the WebRTC handshake between two
+// browsers but never sees the file data, which flows directly peer-to-peer.
 
 const express = require('express');
 const http = require('http');
@@ -12,7 +10,6 @@ require('dotenv').config();
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const PORT = process.env.PORT || 4000;
 
-// Allow the configured frontend plus common local dev origins.
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
@@ -39,7 +36,6 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', rooms: rooms.size, timestamp: new Date().toISOString() });
 });
 
-// Create a room. The sender calls this, then shares the link.
 app.post('/api/create-room', (req, res) => {
   let roomId = generateRoomId();
   while (rooms.has(roomId)) roomId = generateRoomId();
@@ -70,8 +66,7 @@ io.on('connection', (socket) => {
     room.peers.push(socket.id);
 
     if (room.peers.length === 2) {
-      // Both peers present. Tell the first-joiner (the sender/initiator)
-      // to start the WebRTC offer.
+      // Both peers present — tell the first-joiner (initiator) to make the offer.
       io.to(room.peers[0]).emit('peer-ready');
       socket.emit('joined', { waiting: false });
     } else {

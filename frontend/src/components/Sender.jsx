@@ -166,7 +166,6 @@ function Sender({ socket, roomId }) {
   return (
     <div className="app-bg min-h-screen p-4 flex items-center justify-center">
       <div className="w-full max-w-xl animate-fade-in">
-        {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2.5">
             <span className="grid place-items-center w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 ring-1 ring-indigo-200">
@@ -184,7 +183,6 @@ function Sender({ socket, roomId }) {
         </div>
 
         <div className="bg-white rounded-3xl shadow-xl ring-1 ring-slate-200/70 p-7">
-          {/* Share link */}
           <label className="block text-sm font-medium text-slate-600 mb-2">Share this link with the receiver</label>
           <div className="flex gap-2">
             <input
@@ -209,7 +207,6 @@ function Sender({ socket, roomId }) {
             </div>
           )}
 
-          {/* File picker */}
           {(status === 'waiting' || status === 'hashing' || status === 'ready') && (
             <>
               <div
@@ -262,7 +259,6 @@ function Sender({ socket, roomId }) {
             </>
           )}
 
-          {/* Transfer progress */}
           {(status === 'transferring' || status === 'done') && (
             <div className="mt-5 p-4 bg-slate-50 rounded-2xl border border-slate-200">
               <div className="flex items-center justify-between mb-3">
