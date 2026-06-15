@@ -12,44 +12,53 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-@keyframes fade-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+@keyframes rise-in {
+  from { transform: translateY(10px); }
+  to { transform: translateY(0); }
 }
 
+/* Animate only the transform — never opacity — so content is always
+   fully visible even if the animation is interrupted. */
 .animate-fade-in {
-  animation: fade-in 0.4s ease-out both;
+  animation: rise-in 0.4s ease-out both;
 }
 
-/* Soft animated gradient backdrop used across screens */
+/* Soft light gradient backdrop used across screens */
 .app-bg {
   position: relative;
   overflow: hidden;
-  background: radial-gradient(1200px 600px at 10% -10%, #1e293b, transparent),
-    radial-gradient(1000px 500px at 110% 110%, #0f172a, transparent),
-    linear-gradient(135deg, #0b1120 0%, #111827 100%);
+  background: radial-gradient(900px 520px at 8% -10%, #eef2ff, transparent),
+    radial-gradient(900px 520px at 110% 0%, #e0f2fe, transparent),
+    linear-gradient(135deg, #f8fafc 0%, #eef2f7 100%);
+}
+
+/* Keep the actual content above the decorative blobs */
+.app-bg > * {
+  position: relative;
+  z-index: 1;
 }
 
 .app-bg::before,
 .app-bg::after {
   content: '';
   position: absolute;
-  width: 480px;
-  height: 480px;
+  z-index: 0;
+  width: 460px;
+  height: 460px;
   border-radius: 9999px;
   filter: blur(120px);
-  opacity: 0.5;
+  opacity: 0.55;
   pointer-events: none;
 }
 
 .app-bg::before {
-  top: -160px;
+  top: -150px;
   left: -120px;
-  background: #4f46e5;
+  background: #c7d2fe; /* indigo-200 */
 }
 
 .app-bg::after {
-  bottom: -180px;
+  bottom: -170px;
   right: -120px;
-  background: #0ea5e9;
+  background: #bae6fd; /* sky-200 */
 }

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import SimplePeer from 'simple-peer';
 import { calculateSHA256, formatBytes } from '../utils/crypto';
-import { Logo, Download, Check, Shield, Spinner, Warn, File as FileIcon } from './icons';
+import { Logo, Check, Shield, Spinner, Warn, File as FileIcon } from './icons';
 
 const TYPE_CONTROL = 0; // message prefix: JSON control message
 
@@ -135,21 +135,21 @@ function Receiver({ socket, roomId }) {
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2.5">
-            <span className="grid place-items-center w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/30">
+            <span className="grid place-items-center w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 ring-1 ring-emerald-200">
               <Logo className="w-5 h-5" />
             </span>
             <div>
-              <p className="text-white font-semibold leading-tight">Receiving</p>
-              <p className="text-slate-400 text-xs">Room <span className="font-mono text-emerald-300">{roomId}</span></p>
+              <p className="text-slate-800 font-semibold leading-tight">Receiving</p>
+              <p className="text-slate-500 text-xs">Room <span className="font-mono text-emerald-600">{roomId}</span></p>
             </div>
           </div>
-          <span className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full ring-1 ${status === 'connecting' ? 'bg-amber-500/15 text-amber-300 ring-amber-400/30' : status === 'error' ? 'bg-red-500/15 text-red-300 ring-red-400/30' : 'bg-emerald-500/15 text-emerald-300 ring-emerald-400/30'}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${status === 'connecting' ? 'bg-amber-400 animate-pulse' : status === 'error' ? 'bg-red-400' : 'bg-emerald-400'}`} />
+          <span className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full ring-1 ${status === 'connecting' ? 'bg-amber-100 text-amber-700 ring-amber-200' : status === 'error' ? 'bg-red-100 text-red-700 ring-red-200' : 'bg-emerald-100 text-emerald-700 ring-emerald-200'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${status === 'connecting' ? 'bg-amber-500 animate-pulse' : status === 'error' ? 'bg-red-500' : 'bg-emerald-500'}`} />
             {status === 'connecting' ? 'Connecting' : status === 'error' ? 'Disconnected' : 'Connected'}
           </span>
         </div>
 
-        <div className="bg-white/95 backdrop-blur rounded-3xl shadow-2xl ring-1 ring-white/10 p-7">
+        <div className="bg-white rounded-3xl shadow-xl ring-1 ring-slate-200/70 p-7">
           {error && (
             <div className="mb-5 flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
               <Warn className="w-4 h-4 mt-0.5 shrink-0" />
@@ -165,10 +165,13 @@ function Receiver({ socket, roomId }) {
           )}
 
           {status === 'ready' && (
-            <div className="flex flex-col items-center text-center py-6">
-              <span className="grid place-items-center w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 mb-3">
-                <Download className="w-7 h-7" />
-              </span>
+            <div className="flex flex-col items-center text-center py-4">
+              <img
+                src="https://illustrations.popsy.co/blue/remote-work.svg"
+                alt=""
+                className="h-28 mb-2 select-none pointer-events-none"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
               <p className="text-slate-700 font-medium">Connected to the sender</p>
               <p className="text-slate-400 text-sm">Waiting for the transfer to start…</p>
             </div>

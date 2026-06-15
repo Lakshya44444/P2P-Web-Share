@@ -169,21 +169,21 @@ function Sender({ socket, roomId }) {
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2.5">
-            <span className="grid place-items-center w-9 h-9 rounded-xl bg-indigo-500/15 text-indigo-300 ring-1 ring-indigo-400/30">
+            <span className="grid place-items-center w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 ring-1 ring-indigo-200">
               <Logo className="w-5 h-5" />
             </span>
             <div>
-              <p className="text-white font-semibold leading-tight">Sending</p>
-              <p className="text-slate-400 text-xs">Room <span className="font-mono text-indigo-300">{roomId}</span></p>
+              <p className="text-slate-800 font-semibold leading-tight">Sending</p>
+              <p className="text-slate-500 text-xs">Room <span className="font-mono text-indigo-600">{roomId}</span></p>
             </div>
           </div>
-          <span className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full ring-1 ${peerConnected ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-400/30' : 'bg-amber-500/15 text-amber-300 ring-amber-400/30'}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${peerConnected ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'}`} />
+          <span className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full ring-1 ${peerConnected ? 'bg-emerald-100 text-emerald-700 ring-emerald-200' : 'bg-amber-100 text-amber-700 ring-amber-200'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${peerConnected ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`} />
             {peerConnected ? 'Receiver connected' : 'Waiting for receiver'}
           </span>
         </div>
 
-        <div className="bg-white/95 backdrop-blur rounded-3xl shadow-2xl ring-1 ring-white/10 p-7">
+        <div className="bg-white rounded-3xl shadow-xl ring-1 ring-slate-200/70 p-7">
           {/* Share link */}
           <label className="block text-sm font-medium text-slate-600 mb-2">Share this link with the receiver</label>
           <div className="flex gap-2">
@@ -217,9 +217,12 @@ function Sender({ socket, roomId }) {
                 onDrop={handleDrop}
                 className="mt-5 border-2 border-dashed border-slate-300 rounded-2xl p-8 text-center hover:border-indigo-400 hover:bg-indigo-50/40 transition"
               >
-                <span className="grid place-items-center w-14 h-14 mx-auto rounded-2xl bg-indigo-50 text-indigo-600 mb-3">
-                  <Upload className="w-7 h-7" />
-                </span>
+                <img
+                  src="https://illustrations.popsy.co/violet/paper-plane.svg"
+                  alt=""
+                  className="h-24 mx-auto mb-2 select-none pointer-events-none"
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
                 <p className="text-slate-700 font-medium">Drag &amp; drop a file here</p>
                 <p className="text-slate-400 text-sm mb-4">or choose one — up to 50 MB</p>
                 <input id="file-input" type="file" className="hidden" onChange={(e) => onFileChosen(e.target.files[0])} />

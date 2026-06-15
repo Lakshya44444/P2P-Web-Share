@@ -61,13 +61,19 @@ function App() {
       <div className="relative w-full max-w-md animate-fade-in">
         {/* Brand */}
         <div className="flex items-center justify-center gap-2.5 mb-6">
-          <span className="grid place-items-center w-10 h-10 rounded-xl bg-indigo-500/15 text-indigo-300 ring-1 ring-indigo-400/30">
+          <span className="grid place-items-center w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 ring-1 ring-indigo-200">
             <Logo className="w-6 h-6" />
           </span>
-          <span className="text-xl font-semibold tracking-tight text-white">P2P Web Share</span>
+          <span className="text-xl font-semibold tracking-tight text-slate-800">P2P Web Share</span>
         </div>
 
-        <div className="bg-white/95 backdrop-blur rounded-3xl shadow-2xl ring-1 ring-white/10 p-7">
+        <div className="bg-white rounded-3xl shadow-xl ring-1 ring-slate-200/70 p-7">
+          <img
+            src="https://illustrations.popsy.co/violet/communication.svg"
+            alt="Two people sharing files directly"
+            className="h-36 mx-auto mb-2 select-none pointer-events-none"
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          />
           <h1 className="text-2xl font-bold text-slate-900 text-center">Send files, peer to peer</h1>
           <p className="text-slate-500 text-center text-sm mt-1.5 mb-7">
             Files stream directly between browsers. The server only brokers the connection.
