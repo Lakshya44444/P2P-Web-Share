@@ -167,7 +167,7 @@ function Receiver({ socket, roomId }) {
           {status === 'ready' && (
             <div className="flex flex-col items-center text-center py-4">
               <img
-                src="https://illustrations.popsy.co/blue/remote-work.svg"
+                src="/illustrations/remote-work.svg"
                 alt=""
                 className="h-28 mb-2 select-none pointer-events-none"
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}

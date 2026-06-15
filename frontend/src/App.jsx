@@ -69,7 +69,7 @@ function App() {
 
         <div className="bg-white rounded-3xl shadow-xl ring-1 ring-slate-200/70 p-7">
           <img
-            src="https://illustrations.popsy.co/violet/communication.svg"
+            src="/illustrations/communication.svg"
             alt="Two people sharing files directly"
             className="h-36 mx-auto mb-2 select-none pointer-events-none"
             onError={(e) => { e.currentTarget.style.display = 'none'; }}

@@ -218,7 +218,7 @@ function Sender({ socket, roomId }) {
                 className="mt-5 border-2 border-dashed border-slate-300 rounded-2xl p-8 text-center hover:border-indigo-400 hover:bg-indigo-50/40 transition"
               >
                 <img
-                  src="https://illustrations.popsy.co/violet/paper-plane.svg"
+                  src="/illustrations/paper-plane.svg"
                   alt=""
                   className="h-24 mx-auto mb-2 select-none pointer-events-none"
                   onError={(e) => { e.currentTarget.style.display = 'none'; }}
